@@ -13,6 +13,10 @@
     "vite": "latest",
     "typescript": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "mammoth": "latest",
+    "pdfjs-dist": "latest",
+    "docx": "latest",
+    "jspdf": "latest"
   }
 }
