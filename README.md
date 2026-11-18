@@ -1,37 +1,29 @@
 # Manuscript Formatter
 
-An open-source, privacy-focused browser tool for preparing research manuscripts for journal submission.
+An open-source, privacy-focused browser tool for preparing complete research manuscripts for journal submission.
 
-## Use the website
-
-The production website is published with GitHub Pages:
+## Website
 
 https://geopromilton.github.io/manuscript-formatter/
 
-## Run locally
+## Features
+
+- DOCX, PDF, TXT, and LaTeX manuscript upload
+- Automatic title, author, abstract, keyword, section, and reference detection
+- Total and per-section word counts
+- Presets for 29 journal/publisher families, including Nature, PNAS, IEEE, SAGE, MDPI, AGU, Elsevier, Wiley, Springer, Taylor & Francis, Frontiers, PLOS, BMC, OUP, Cambridge, ACS, and others
+- DOCX, PDF, TXT, and LaTeX export
+- Browser-only file processing
+
+## Development
 
 ```bash
 npm install
 npm run dev
-```
-
-Open the address shown by Vite, usually http://localhost:5173.
-
-## Build
-
-```bash
 npm run build
-npm run preview
 ```
 
-## Current MVP
-
-- Nature, PNAS, and IEEE profiles
-- Manuscript title, abstract, keywords, body, and references
-- Abstract word-count and missing-content checks
-- Text draft export
-
-DOCX, PDF, LaTeX, custom profiles, and a Windows desktop package will be added in later releases.
+Publisher presets are starting defaults, not substitutes for a journal's current official instructions. Add journal-specific overrides in the custom profile workflow as it is expanded.
 
 ## License
 
