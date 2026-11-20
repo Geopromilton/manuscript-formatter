@@ -656,10 +656,16 @@ function App() {
           <h2>Bring your research<br /><em>to its final form.</em></h2>
           <p className="intro">A calm, intelligent workspace for transforming your manuscript into a publication-ready document.</p>
         </div>
-        <div className="journal-card">
-          <div className="card-kicker"><span className="sparkle">✦</span> FORMATTING PROFILE</div>
-          <label htmlFor="journal-profile">TARGET JOURNAL / TEMPLATE</label>
-          <select id="journal-profile" value={profile} onChange={(event) => setProfile(event.target.value)}>
+        <div className="hero-side">
+          <div className="journey-card">
+            <div><h3>Your Manuscript<br />Journey</h3><span className="journey-icon">✦</span></div>
+            <ul><li>Structured Format</li><li>Citation Ready</li><li>Journal Guidelines</li><li>Plagiarism Check</li></ul>
+            <button onClick={() => setTab('review')}>➤ Ready for Submission</button>
+          </div>
+          <div className="journal-card">
+            <div className="card-kicker"><span className="sparkle">✦</span> FORMATTING PROFILE</div>
+            <label htmlFor="journal-profile">TARGET JOURNAL / TEMPLATE</label>
+            <select id="journal-profile" value={profile} onChange={(event) => setProfile(event.target.value)}>
             <optgroup label="Journal-specific profiles">
               {Object.entries(profiles)
                 .filter(([, value]) => value.scope === 'journal')
@@ -670,12 +676,13 @@ function App() {
                 .filter(([, value]) => value.scope !== 'journal')
                 .map(([name]) => <option key={name}>{name}</option>)}
             </optgroup>
-          </select>
-          <small className="profile-status"><span className="status-dot" />{p.status}</small>
-          <div className="specs">
-            <span>{p.publisher}</span>
-            <span>{p.font} {p.size} pt</span>
-            <span>{p.style}</span>
+            </select>
+            <small className="profile-status"><span className="status-dot" />{p.status}</small>
+            <div className="specs">
+              <span>{p.publisher}</span>
+              <span>{p.font} {p.size} pt</span>
+              <span>{p.style}</span>
+            </div>
           </div>
         </div>
       </section>
@@ -701,28 +708,38 @@ function App() {
 
       {tab === 'document' && (
         <section className="panel" id="panel-document" role="tabpanel">
-          <div
-            className={`dropzone ${drag ? 'drag' : ''}`}
-            role="button"
-            tabIndex="0"
-            aria-label="Choose or drop a manuscript"
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') input.current.click()
-            }}
-            onDragOver={(event) => { event.preventDefault(); setDrag(true) }}
-            onDragLeave={() => setDrag(false)}
-            onDrop={(event) => {
-              event.preventDefault()
-              setDrag(false)
-              upload(event.dataTransfer.files[0])
-            }}
-            onClick={() => input.current.click()}
-          >
-            <input ref={input} type="file" accept=".docx,.pdf,.txt,.tex" onChange={(event) => upload(event.target.files[0])} />
-            <span className="upload-icon" aria-hidden="true">↑</span>
-            <strong>{fileName || 'Drop your manuscript here'}</strong>
-            <small>DOCX, PDF, TXT or LaTeX</small>
-            <button type="button">Choose document</button>
+          <div className="dashboard-columns">
+            <div
+              className={`dropzone ${drag ? 'drag' : ''}`}
+              role="button"
+              tabIndex="0"
+              aria-label="Choose or drop a manuscript"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') input.current.click()
+              }}
+              onDragOver={(event) => { event.preventDefault(); setDrag(true) }}
+              onDragLeave={() => setDrag(false)}
+              onDrop={(event) => {
+                event.preventDefault()
+                setDrag(false)
+                upload(event.dataTransfer.files[0])
+              }}
+              onClick={() => input.current.click()}
+            >
+              <input ref={input} type="file" accept=".docx,.pdf,.txt,.tex" onChange={(event) => upload(event.target.files[0])} />
+              <span className="upload-icon" aria-hidden="true">↑</span>
+              <strong>{fileName || 'Drag & Drop Your Manuscript'}</strong>
+              <span className="drop-subtitle">or choose a file from your device</span>
+              <button type="button">▣ &nbsp; Choose Document <b>›</b></button>
+              <small>Supports: <b>DOCX</b> · <b>PDF</b> · <b>LaTeX</b></small>
+              <div className="upload-note">⌕ Max size: 50 MB &nbsp; | &nbsp; Secure upload with end-to-end encryption</div>
+            </div>
+            <div className="dashboard-side">
+              <div className="side-card recent-projects"><div className="side-card-title"><strong>Recent Projects</strong><a href="#recent">View All →</a></div>
+                {[['▣', 'Soil Quality Study.docx', 'Ready'], ['▣', 'Urban Planning Research.pdf', 'In Review'], ['⌘', 'Geospatial Analysis.tex', 'Editing'], ['▣', 'Water Resources Study.docx', 'Ready']].map(([icon, name, state]) => <div className="recent-row" key={name}><span className="file-icon">{icon}</span><div><strong>{name}</strong><small>Apr {state === 'Ready' ? '12' : state === 'In Review' ? '10' : '08'}, 2025</small></div><b className={state.toLowerCase().replace(' ', '-')}>{state}</b></div>)}
+              </div>
+              <div className="side-card quick-tools"><strong>Quick Tools</strong><div><button onClick={() => setProfile('Custom profile')}>▣<span>Journal<br />Templates</span></button><button onClick={() => setTab('review')}>❝<span>Citation<br />Manager</span></button><button onClick={() => setTab('review')}>♢<span>Plagiarism<br />Check</span></button><button onClick={() => setTab('export')}>▤<span>Formatting<br />Guide</span></button></div></div>
+            </div>
           </div>
         </section>
       )}
@@ -872,8 +889,8 @@ function App() {
       {status && <div className="toast" role="status">{status}<button aria-label="Dismiss message" onClick={() => setStatus('')}>×</button></div>}
 
       <footer>
-        <span>Built for researchers · Files stay in your browser</span>
-        <span>{Object.values(profiles).filter((value) => value.scope === 'journal').length} journal profiles · {Object.values(profiles).filter((value) => value.scope !== 'journal').length} publisher templates</span>
+        <span className="footer-quote">❯ &nbsp; From your research<br />to <em>global impact.</em></span>
+        <span>▤ &nbsp; <b>100+</b><small>Journal Templates</small></span><span>▱ &nbsp; <b>Multiple</b><small>File Formats</small></span><span>♧ &nbsp; <b>AI-Powered</b><small>Structure Check</small></span><span>♢ &nbsp; <b>Secure & Private</b><small>Your Data, Your Control</small></span>
       </footer>
       </main>
     </div>
