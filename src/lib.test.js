@@ -83,4 +83,32 @@ describe('exports and validation', () => {
     expect(checks.find((check) => check.label === 'Title').passed).toBe(true)
     expect(checks.find((check) => check.label === 'Required sections').passed).toBe(false)
   })
+
+  it('reports embedded figures and table references', () => {
+    const manuscript = {
+      title: 'Title',
+      authors: '',
+      abstract: 'Short abstract',
+      keywords: 'one, two, three',
+      introduction: '',
+      methods: '',
+      results: 'Figure 1 shows the trend. Table 2 lists the values.',
+      discussion: '',
+      conclusion: '',
+      references: '[1] Smith 2024',
+    }
+    const checks = validateManuscript(
+      manuscript,
+      { abstract: 250 },
+      {
+        figures: [{ id: 'figure-1', name: 'Figure 1', src: 'data:image/png;base64,x' }],
+        tables: [{ id: 'table-1', name: 'Table 1', text: 'A | B', html: '<table></table>' }],
+      },
+    )
+    const assetCheck = checks.find((check) => check.label === 'Figure/table references')
+    expect(assetCheck.detail).toContain('1 figure references')
+    expect(assetCheck.detail).toContain('1 table references')
+    expect(assetCheck.detail).toContain('1 embedded figures')
+    expect(assetCheck.detail).toContain('1 embedded tables')
+  })
 })

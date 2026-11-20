@@ -136,7 +136,7 @@ export function buildDocxConfig(profile) {
   }
 }
 
-export function validateManuscript(manuscript, profile) {
+export function validateManuscript(manuscript, profile, assets = { figures: [], tables: [] }) {
   const checks = []
   const add = (label, passed, detail) =>
     checks.push({ label, passed, detail })
@@ -206,12 +206,15 @@ export function validateManuscript(manuscript, profile) {
     'Checked for a recognizable numbered or author-year reference pattern. Citation style is manual unless implemented for the journal.',
   )
 
-  const figureCount = (manuscript.introduction + manuscript.methods + manuscript.results + manuscript.discussion).match(/\bFigure\b/gi)?.length || 0
-  const tableCount = (manuscript.introduction + manuscript.methods + manuscript.results + manuscript.discussion).match(/\bTable\b/gi)?.length || 0
+  const bodyText = manuscript.introduction + '\n' + manuscript.methods + '\n' + manuscript.results + '\n' + manuscript.discussion
+  const figureMentions = bodyText.match(/\bFigure\s+\d+[a-z]?|\bFig\.?\s*\d+[a-z]?/gi)?.length || 0
+  const tableMentions = bodyText.match(/\bTable\s+\d+/gi)?.length || 0
+  const embeddedFigures = assets.figures?.length || 0
+  const embeddedTables = assets.tables?.length || 0
   add(
     'Figure/table references',
     true,
-    `Detected ${figureCount} Figure mentions and ${tableCount} Table mentions; file embedding was not verified.`,
+    `Detected ${figureMentions} figure references and ${tableMentions} table references; found ${embeddedFigures} embedded figures and ${embeddedTables} embedded tables.`,
   )
 
   return checks

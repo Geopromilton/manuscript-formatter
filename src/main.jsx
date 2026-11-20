@@ -116,18 +116,45 @@ async function extractPdf(file) {
 async function extractDocument(file) {
   if (/\.docx$/i.test(file.name)) {
     const mammoth = await import('mammoth')
-    const result = await mammoth.extractRawText({
+    const raw = await mammoth.extractRawText({
       arrayBuffer: await file.arrayBuffer(),
     })
-    return result.value
+    const html = await mammoth.convertToHtml(
+      {
+        arrayBuffer: await file.arrayBuffer(),
+      },
+      {
+        convertImage: mammoth.images.imgElement((image) =>
+          image.read('base64').then((base64) => ({
+            src: `data:${image.contentType};base64,${base64}`,
+          })),
+        ),
+      },
+    )
+    const documentHtml = new DOMParser().parseFromString(html.value, 'text/html')
+    const figures = [...documentHtml.querySelectorAll('img')].map((image, index) => ({
+      id: `figure-${index + 1}`,
+      name: image.getAttribute('alt') || `Embedded Figure ${index + 1}`,
+      src: image.getAttribute('src') || '',
+    })).filter((figure) => figure.src)
+    const tables = [...documentHtml.querySelectorAll('table')].map((table, index) => ({
+      id: `table-${index + 1}`,
+      name: `Embedded Table ${index + 1}`,
+      html: table.outerHTML,
+      text: [...table.querySelectorAll('tr')]
+        .map((row) => [...row.querySelectorAll('th, td')].map((cell) => cell.textContent.trim()).join(' | '))
+        .join('\n'),
+    }))
+    return { text: raw.value, assets: { figures, tables } }
   }
-  if (/\.pdf$/i.test(file.name)) return extractPdf(file)
-  return file.text()
+  if (/\.pdf$/i.test(file.name)) return { text: await extractPdf(file), assets: { figures: [], tables: [] } }
+  return { text: await file.text(), assets: { figures: [], tables: [] } }
 }
 
 function App() {
   const [profile, setProfile] = useState('Scientific Reports')
   const [manuscript, setManuscript] = useState(blank)
+  const [assets, setAssets] = useState({ figures: [], tables: [] })
   const [tab, setTab] = useState('document')
   const [fileName, setFileName] = useState('')
   const [status, setStatus] = useState('')
@@ -140,7 +167,7 @@ function App() {
     (sum, [key]) => sum + countWords(manuscript[key]),
     0,
   )
-  const checks = validateManuscript(manuscript, p)
+  const checks = validateManuscript(manuscript, p, assets)
   const warnings = checks.filter((check) => !check.passed)
 
   useEffect(() => {
@@ -148,7 +175,8 @@ function App() {
       .then((project) => {
         if (project) {
           setManuscript(project.manuscript || blank)
-          setProfile(project.profile || 'Nature')
+          setAssets(project.assets || { figures: [], tables: [] })
+          setProfile(project.profile || 'Scientific Reports')
           setFileName(project.fileName || '')
           setStatus('Restored your previously saved work.')
         }
@@ -161,12 +189,12 @@ function App() {
     if (!loaded) return
     setUnsaved(true)
     const timer = window.setTimeout(() => {
-      saveProject({ manuscript, profile, fileName })
+      saveProject({ manuscript, assets, profile, fileName })
         .then(() => setUnsaved(false))
         .catch(() => setStatus('Could not save locally.'))
     }, 700)
     return () => window.clearTimeout(timer)
-  }, [manuscript, profile, fileName, loaded])
+  }, [manuscript, assets, profile, fileName, loaded])
 
   useEffect(() => {
     const warn = (event) => {
@@ -186,8 +214,9 @@ function App() {
     }
     setStatus('Reading manuscript…')
     try {
-      const text = await extractDocument(file)
-      setManuscript(splitSections(text))
+      const extracted = await extractDocument(file)
+      setManuscript(splitSections(extracted.text))
+      setAssets(extracted.assets)
       setFileName(file.name)
       setStatus(`Imported ${file.name}`)
       setTab('sections')
@@ -235,6 +264,11 @@ function App() {
       Paragraph,
       HeadingLevel,
       TextRun,
+      ImageRun,
+      Table,
+      TableRow,
+      TableCell,
+      WidthType,
     } = await import('docx')
     const config = buildDocxConfig(p)
     const children = []
@@ -293,6 +327,68 @@ function App() {
         ),
       )
     })
+
+    if (assets.figures.length > 0 || assets.tables.length > 0) {
+      children.push(
+        new Paragraph({
+          text: 'Figures and Tables',
+          heading: HeadingLevel.HEADING_1,
+          spacing: { before: 240, after: 120, line: config.line, lineRule: 'auto' },
+        }),
+      )
+
+      for (const figure of assets.figures) {
+        try {
+          const base64 = figure.src.split(',')[1]
+          const binary = atob(base64)
+          const bytes = new Uint8Array(binary.length)
+          for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+          children.push(
+            new Paragraph({
+              alignment: 'center',
+              children: [new ImageRun({ data: bytes, transformation: { width: 500, height: 300 } })],
+            }),
+            new Paragraph({
+              alignment: 'center',
+              spacing: { after: 240, line: config.line, lineRule: 'auto' },
+              children: [new TextRun({ text: figure.name, font: config.font, size: config.fontSize })],
+            }),
+          )
+        } catch {
+          children.push(new Paragraph({ text: `[Image asset unavailable: ${figure.name}]` }))
+        }
+      }
+
+      for (const tableAsset of assets.tables) {
+        const parsed = new DOMParser().parseFromString(tableAsset.html, 'text/html')
+        const sourceRows = [...parsed.querySelectorAll('tr')]
+        if (sourceRows.length > 0) {
+          const rows = sourceRows.map((sourceRow) =>
+            new TableRow({
+              children: [...sourceRow.querySelectorAll('th, td')].map((cell) =>
+                new TableCell({
+                  width: { size: 25, type: WidthType.PERCENTAGE },
+                  children: [
+                    new Paragraph({
+                      spacing: { line: config.line, lineRule: 'auto' },
+                      children: [
+                        new TextRun({
+                          text: cell.textContent.trim(),
+                          font: config.font,
+                          size: config.fontSize,
+                          bold: cell.tagName === 'TH',
+                        }),
+                      ],
+                    }),
+                  ],
+                }),
+              ),
+            }),
+          )
+          children.push(new Table({ rows }), new Paragraph({ text: tableAsset.name }))
+        }
+      }
+    }
 
     const doc = new Document({
       styles: {
@@ -368,6 +464,32 @@ function App() {
       write(text)
       y += 5
     })
+    if (assets.figures.length > 0 || assets.tables.length > 0) {
+      write('Figures and Tables', true)
+      y += 2
+      for (const figure of assets.figures) {
+        try {
+          const mime = figure.src.match(/^data:(image\/[^;]+);base64,/)?.[1]
+          const format = mime === 'image/png' ? 'PNG' : mime === 'image/jpeg' ? 'JPEG' : null
+          if (format) {
+            if (y > 230) { pdf.addPage(); y = margin }
+            pdf.addImage(figure.src, format, margin, y, 210 - margin * 2, 70)
+            y += 75
+          }
+        } catch {
+          write(`[Image asset unavailable: ${figure.name}]`)
+        }
+        write(figure.name)
+        y += 5
+      }
+      for (const tableAsset of assets.tables) {
+        if (y > 270) { pdf.addPage(); y = margin }
+        write(tableAsset.name, true)
+        y += 2
+        write(tableAsset.text)
+        y += 5
+      }
+    }
     pdf.save('formatted-manuscript.pdf')
   }
 
@@ -516,6 +638,28 @@ function App() {
           <div className="manual-note">
             <strong>Citation formatting:</strong> {p.style} is identified for the preset, but reference text is not automatically rewritten. Review and format references manually.
           </div>
+          {(assets.figures.length > 0 || assets.tables.length > 0) && (
+            <div className="asset-review">
+              <strong>Embedded assets</strong>
+              {assets.figures.map((figure) => (
+                <div className="asset-row" key={figure.id}>
+                  <img src={figure.src} alt={figure.name} />
+                  <span>{figure.name}</span>
+                </div>
+              ))}
+              {assets.tables.map((table) => (
+                <div className="asset-row table-preview" key={table.id}>
+                  <pre>{table.text}</pre>
+                  <span>{table.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {assets.figures.length === 0 && assets.tables.length === 0 && (
+            <div className="manual-note">
+              <strong>Figures and tables:</strong> No embedded figure or table assets were found in this import. The formatter will still verify in-text Figure and Table references and preserve any assets added in future uploads.
+            </div>
+          )}
           <div className="actions"><button onClick={() => setTab('edit')}>Edit sections</button><button className="primary" onClick={() => setTab('export')}>Continue to export</button></div>
         </section>
       )}
@@ -541,6 +685,20 @@ function App() {
                   {text.split(/\n+/).filter(Boolean).map((line, index) => <p key={index}>{line}</p>)}
                 </section>
               ))}
+              {(assets.figures.length > 0 || assets.tables.length > 0) && (
+                <section>
+                  <h2>Figures and Tables</h2>
+                  {assets.figures.map((figure) => (
+                    <figure className="preview-asset" key={figure.id}>
+                      <img src={figure.src} alt={figure.name} />
+                      <figcaption>{figure.name}</figcaption>
+                    </figure>
+                  ))}
+                  {assets.tables.map((table) => (
+                    <div className="preview-asset" key={table.id} dangerouslySetInnerHTML={{ __html: table.html }} />
+                  ))}
+                </section>
+              )}
             </article>
           </div>
           <div className="actions">
