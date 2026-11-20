@@ -130,6 +130,26 @@ function documentHtmlToText(node) {
   return blockElements.has(node.tagName) ? `\n${content}\n` : content
 }
 
+function formatImportedTable(html) {
+  const document = new DOMParser().parseFromString(html, 'text/html')
+  document.querySelectorAll('table').forEach((table) => {
+    table.classList.add('manuscript-table')
+    table.setAttribute('data-reference-style', 'grid-gray-header')
+    const firstRow = table.querySelector('tr')
+    if (!firstRow) return
+    firstRow.classList.add('table-header-row')
+    firstRow.querySelectorAll('td').forEach((cell) => {
+      const header = document.createElement('th')
+      header.innerHTML = cell.innerHTML
+      for (const attribute of cell.attributes) {
+        header.setAttribute(attribute.name, attribute.value)
+      }
+      cell.replaceWith(header)
+    })
+  })
+  return document.body.innerHTML
+}
+
 async function extractDocument(file) {
   if (/\.docx$/i.test(file.name)) {
     const mammoth = await import('mammoth')
@@ -148,7 +168,8 @@ async function extractDocument(file) {
         ),
       },
     )
-    const documentHtml = new DOMParser().parseFromString(html.value, 'text/html')
+    const formattedHtml = formatImportedTable(html.value)
+    const documentHtml = new DOMParser().parseFromString(formattedHtml, 'text/html')
     const figures = [...documentHtml.querySelectorAll('img')].map((image, index) => ({
       id: `figure-${index + 1}`,
       name: image.getAttribute('alt') || `Embedded Figure ${index + 1}`,
@@ -247,14 +268,22 @@ function App() {
         children: [...sourceRow.querySelectorAll('th, td')].map((cell) =>
           new docx.TableCell({
             width: { size: 25, type: docx.WidthType.PERCENTAGE },
+            shading: cell.tagName === 'TH' ? { fill: 'F2F2F2' } : undefined,
+            borders: {
+              top: { style: docx.BorderStyle.SINGLE, size: 4, color: '666666' },
+              bottom: { style: docx.BorderStyle.SINGLE, size: 4, color: '666666' },
+              left: { style: docx.BorderStyle.SINGLE, size: 4, color: '666666' },
+              right: { style: docx.BorderStyle.SINGLE, size: 4, color: '666666' },
+            },
             children: [
               new docx.Paragraph({
+                alignment: cell.tagName === 'TH' ? 'center' : 'left',
                 spacing: { line: config.line, lineRule: 'auto' },
                 children: [
                   new docx.TextRun({
                     text: cell.textContent.trim(),
                     font: config.font,
-                    size: config.fontSize,
+                    size: Math.min(config.fontSize, 20),
                     bold: cell.tagName === 'TH',
                   }),
                 ],
@@ -264,7 +293,24 @@ function App() {
         ),
       }),
     )
-    children.push(new docx.Table({ rows }), new docx.Paragraph({ text: asset.name }))
+    children.push(
+      new docx.Table({
+        rows,
+        borders: {
+          top: { style: docx.BorderStyle.SINGLE, size: 4, color: '666666' },
+          bottom: { style: docx.BorderStyle.SINGLE, size: 4, color: '666666' },
+          left: { style: docx.BorderStyle.SINGLE, size: 4, color: '666666' },
+          right: { style: docx.BorderStyle.SINGLE, size: 4, color: '666666' },
+          insideHorizontal: { style: docx.BorderStyle.SINGLE, size: 4, color: '666666' },
+          insideVertical: { style: docx.BorderStyle.SINGLE, size: 4, color: '666666' },
+        },
+      }),
+      new docx.Paragraph({
+        alignment: 'center',
+        spacing: { before: 80, after: 160, line: config.line, lineRule: 'auto' },
+        children: [new docx.TextRun({ text: asset.name, font: config.font, size: 18, italic: true })],
+      }),
+    )
   }
 
   function appendDocxText(text, children, config, docx) {
@@ -383,6 +429,7 @@ function App() {
       TableRow,
       TableCell,
       WidthType,
+      BorderStyle,
     } = await import('docx')
     const docx = {
       Paragraph,
@@ -392,6 +439,7 @@ function App() {
       TableRow,
       TableCell,
       WidthType,
+      BorderStyle,
     }
     const config = buildDocxConfig(p)
     const children = []

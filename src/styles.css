@@ -128,8 +128,10 @@ button { border: 1px solid #cbd9ce; background: white; padding: 10px 15px; borde
 .preview-asset { margin: 18px 0; break-inside: avoid; }
 .preview-asset img { max-width: 100%; max-height: 240px; object-fit: contain; }
 .preview-asset figcaption { text-align: center; font-size: 11px; margin-top: 6px; }
-.preview-asset table { width: 100%; border-collapse: collapse; font-size: 10px; }
-.preview-asset th, .preview-asset td { border: 1px solid #9ba79e; padding: 5px; }
+.preview-asset table { width: 100%; border: 1px solid #666; border-collapse: collapse; font-family: 'Times New Roman', serif; font-size: 10px; table-layout: auto; }
+.preview-asset th, .preview-asset td { border: 1px solid #666; padding: 5px 6px; vertical-align: top; }
+.preview-asset th { background: #f2f2f2; font-weight: 700; text-align: center; }
+.preview-asset td { text-align: left; }
 .toast { position: fixed; right: 24px; bottom: 24px; max-width: 420px; background: #173d35; color: white; border-radius: 8px; padding: 14px 16px; box-shadow: 0 8px 24px #173d3540; z-index: 20; font-size: 13px; }
 .toast button { background: transparent; color: white; border: 0; margin-left: 12px; padding: 2px 6px; }
 footer { display: flex; justify-content: space-between; color: #86928a; font-size: 10px; margin: 25px 0 0; }
