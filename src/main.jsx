@@ -113,6 +113,23 @@ async function extractPdf(file) {
   return text
 }
 
+const blockElements = new Set([
+  'ADDRESS', 'ARTICLE', 'ASIDE', 'BLOCKQUOTE', 'DIV', 'DL', 'FIELDSET',
+  'FIGCAPTION', 'FIGURE', 'FOOTER', 'FORM', 'H1', 'H2', 'H3', 'H4', 'H5',
+  'H6', 'HEADER', 'HR', 'LI', 'MAIN', 'NAV', 'OL', 'P', 'PRE', 'SECTION',
+  'TABLE', 'TR', 'UL',
+])
+
+function documentHtmlToText(node) {
+  if (node.nodeType === Node.TEXT_NODE) return node.nodeValue.replace(/\s+/g, ' ')
+  if (node.nodeType !== Node.ELEMENT_NODE) return ''
+  if (node.tagName === 'IMG') return `\n[[FIGURE:${node.dataset.assetId}]]\n`
+  if (node.tagName === 'TABLE') return `\n[[TABLE:${node.dataset.assetId}]]\n`
+
+  const content = [...node.childNodes].map(documentHtmlToText).join('')
+  return blockElements.has(node.tagName) ? `\n${content}\n` : content
+}
+
 async function extractDocument(file) {
   if (/\.docx$/i.test(file.name)) {
     const mammoth = await import('mammoth')
@@ -145,10 +162,34 @@ async function extractDocument(file) {
         .map((row) => [...row.querySelectorAll('th, td')].map((cell) => cell.textContent.trim()).join(' | '))
         .join('\n'),
     }))
-    return { text: raw.value, assets: { figures, tables } }
+    documentHtml.querySelectorAll('img').forEach((image, index) => {
+      image.dataset.assetId = figures[index]?.id || ''
+    })
+    documentHtml.querySelectorAll('table').forEach((table, index) => {
+      table.dataset.assetId = tables[index]?.id || ''
+    })
+    const text = documentHtmlToText(documentHtml.body)
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+    return { text: text || raw.value, assets: { figures, tables } }
   }
   if (/\.pdf$/i.test(file.name)) return { text: await extractPdf(file), assets: { figures: [], tables: [] } }
   return { text: await file.text(), assets: { figures: [], tables: [] } }
+}
+
+function assetParts(text) {
+  const parts = []
+  const token = /\[\[(FIGURE|TABLE):([^\]]+)\]\]/g
+  let start = 0
+  let match
+  while ((match = token.exec(text)) !== null) {
+    if (match.index > start) parts.push({ type: 'text', value: text.slice(start, match.index) })
+    parts.push({ type: match[1].toLowerCase(), id: match[2] })
+    start = match.index + match[0].length
+  }
+  if (start < text.length) parts.push({ type: 'text', value: text.slice(start) })
+  return parts
 }
 
 function App() {
@@ -169,6 +210,79 @@ function App() {
   )
   const checks = validateManuscript(manuscript, p, assets)
   const warnings = checks.filter((check) => !check.passed)
+  const assetById = Object.fromEntries(
+    [...assets.figures, ...assets.tables].map((asset) => [asset.id, asset]),
+  )
+
+  function appendDocxAsset(asset, children, config, docx) {
+    if (!asset) return
+    if (asset.src) {
+      try {
+        const base64 = asset.src.split(',')[1]
+        const binary = atob(base64)
+        const bytes = new Uint8Array(binary.length)
+        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+        children.push(
+          new docx.Paragraph({
+            alignment: 'center',
+            children: [new docx.ImageRun({ data: bytes, transformation: { width: 500, height: 300 } })],
+          }),
+          new docx.Paragraph({
+            alignment: 'center',
+            spacing: { after: 240, line: config.line, lineRule: 'auto' },
+            children: [new docx.TextRun({ text: asset.name, font: config.font, size: config.fontSize })],
+          }),
+        )
+      } catch {
+        children.push(new docx.Paragraph({ text: `[Image asset unavailable: ${asset.name}]` }))
+      }
+      return
+    }
+
+    const parsed = new DOMParser().parseFromString(asset.html, 'text/html')
+    const sourceRows = [...parsed.querySelectorAll('tr')]
+    if (sourceRows.length === 0) return
+    const rows = sourceRows.map((sourceRow) =>
+      new docx.TableRow({
+        children: [...sourceRow.querySelectorAll('th, td')].map((cell) =>
+          new docx.TableCell({
+            width: { size: 25, type: docx.WidthType.PERCENTAGE },
+            children: [
+              new docx.Paragraph({
+                spacing: { line: config.line, lineRule: 'auto' },
+                children: [
+                  new docx.TextRun({
+                    text: cell.textContent.trim(),
+                    font: config.font,
+                    size: config.fontSize,
+                    bold: cell.tagName === 'TH',
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ),
+      }),
+    )
+    children.push(new docx.Table({ rows }), new docx.Paragraph({ text: asset.name }))
+  }
+
+  function appendDocxText(text, children, config, docx) {
+    assetParts(text).forEach((part) => {
+      if (part.type === 'text') {
+        part.value.split(/\n+/).filter(Boolean).forEach((line) =>
+          children.push(
+            new docx.Paragraph({
+              spacing: { line: config.line, lineRule: 'auto', after: 120 },
+              children: [new docx.TextRun({ text: line, font: config.font, size: config.fontSize })],
+            }),
+          ),
+        )
+      } else {
+        appendDocxAsset(assetById[part.id], children, config, docx)
+      }
+    })
+  }
 
   useEffect(() => {
     loadProject()
@@ -270,6 +384,15 @@ function App() {
       TableCell,
       WidthType,
     } = await import('docx')
+    const docx = {
+      Paragraph,
+      TextRun,
+      ImageRun,
+      Table,
+      TableRow,
+      TableCell,
+      WidthType,
+    }
     const config = buildDocxConfig(p)
     const children = []
     children.push(
@@ -316,79 +439,8 @@ function App() {
           spacing: { before: 240, after: 120, line: config.line, lineRule: 'auto' },
         }),
       )
-      text.split(/\n+/).filter(Boolean).forEach((line) =>
-        children.push(
-          new Paragraph({
-            spacing: { line: config.line, lineRule: 'auto', after: 120 },
-            children: [
-              new TextRun({ text: line, font: config.font, size: config.fontSize }),
-            ],
-          }),
-        ),
-      )
+      appendDocxText(text, children, config, docx)
     })
-
-    if (assets.figures.length > 0 || assets.tables.length > 0) {
-      children.push(
-        new Paragraph({
-          text: 'Figures and Tables',
-          heading: HeadingLevel.HEADING_1,
-          spacing: { before: 240, after: 120, line: config.line, lineRule: 'auto' },
-        }),
-      )
-
-      for (const figure of assets.figures) {
-        try {
-          const base64 = figure.src.split(',')[1]
-          const binary = atob(base64)
-          const bytes = new Uint8Array(binary.length)
-          for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
-          children.push(
-            new Paragraph({
-              alignment: 'center',
-              children: [new ImageRun({ data: bytes, transformation: { width: 500, height: 300 } })],
-            }),
-            new Paragraph({
-              alignment: 'center',
-              spacing: { after: 240, line: config.line, lineRule: 'auto' },
-              children: [new TextRun({ text: figure.name, font: config.font, size: config.fontSize })],
-            }),
-          )
-        } catch {
-          children.push(new Paragraph({ text: `[Image asset unavailable: ${figure.name}]` }))
-        }
-      }
-
-      for (const tableAsset of assets.tables) {
-        const parsed = new DOMParser().parseFromString(tableAsset.html, 'text/html')
-        const sourceRows = [...parsed.querySelectorAll('tr')]
-        if (sourceRows.length > 0) {
-          const rows = sourceRows.map((sourceRow) =>
-            new TableRow({
-              children: [...sourceRow.querySelectorAll('th, td')].map((cell) =>
-                new TableCell({
-                  width: { size: 25, type: WidthType.PERCENTAGE },
-                  children: [
-                    new Paragraph({
-                      spacing: { line: config.line, lineRule: 'auto' },
-                      children: [
-                        new TextRun({
-                          text: cell.textContent.trim(),
-                          font: config.font,
-                          size: config.fontSize,
-                          bold: cell.tagName === 'TH',
-                        }),
-                      ],
-                    }),
-                  ],
-                }),
-              ),
-            }),
-          )
-          children.push(new Table({ rows }), new Paragraph({ text: tableAsset.name }))
-        }
-      }
-    }
 
     const doc = new Document({
       styles: {
@@ -446,6 +498,27 @@ function App() {
       })
     }
 
+    const writeAsset = (asset) => {
+      if (!asset) return
+      if (asset.src) {
+        const mime = asset.src.match(/^data:(image\/[^;]+);base64,/)?.[1]
+        const format = mime === 'image/png' ? 'PNG' : mime === 'image/jpeg' ? 'JPEG' : null
+        if (format) {
+          if (y > 220) { pdf.addPage(); y = margin }
+          pdf.addImage(asset.src, format, margin, y, 210 - margin * 2, 70)
+          y += 75
+        }
+        write(asset.name)
+        y += 5
+        return
+      }
+      if (y > 270) { pdf.addPage(); y = margin }
+      write(asset.name, true)
+      y += 2
+      write(asset.text)
+      y += 5
+    }
+
     write(manuscript.title || 'Untitled Manuscript', true)
     y += 5
     ;[
@@ -461,35 +534,12 @@ function App() {
       if (!text) return
       write(heading, true)
       y += 2
-      write(text)
+      assetParts(text).forEach((part) => {
+        if (part.type === 'text') write(part.value)
+        else writeAsset(assetById[part.id])
+      })
       y += 5
     })
-    if (assets.figures.length > 0 || assets.tables.length > 0) {
-      write('Figures and Tables', true)
-      y += 2
-      for (const figure of assets.figures) {
-        try {
-          const mime = figure.src.match(/^data:(image\/[^;]+);base64,/)?.[1]
-          const format = mime === 'image/png' ? 'PNG' : mime === 'image/jpeg' ? 'JPEG' : null
-          if (format) {
-            if (y > 230) { pdf.addPage(); y = margin }
-            pdf.addImage(figure.src, format, margin, y, 210 - margin * 2, 70)
-            y += 75
-          }
-        } catch {
-          write(`[Image asset unavailable: ${figure.name}]`)
-        }
-        write(figure.name)
-        y += 5
-      }
-      for (const tableAsset of assets.tables) {
-        if (y > 270) { pdf.addPage(); y = margin }
-        write(tableAsset.name, true)
-        y += 2
-        write(tableAsset.text)
-        y += 5
-      }
-    }
     pdf.save('formatted-manuscript.pdf')
   }
 
@@ -682,23 +732,32 @@ function App() {
               {previewSections.map(([heading, text]) => (
                 <section key={heading}>
                   <h2>{heading}</h2>
-                  {text.split(/\n+/).filter(Boolean).map((line, index) => <p key={index}>{line}</p>)}
+                  {assetParts(text).map((part, index) => {
+                    if (part.type === 'text') {
+                      return part.value.split(/\n+/).filter(Boolean).map((line, lineIndex) => (
+                        <p key={`${index}-${lineIndex}`}>{line}</p>
+                      ))
+                    }
+                    const asset = assetById[part.id]
+                    if (!asset) return null
+                    if (asset.src) {
+                      return (
+                        <figure className="preview-asset inline" key={`${part.id}-${index}`}>
+                          <img src={asset.src} alt={asset.name} />
+                          <figcaption>{asset.name}</figcaption>
+                        </figure>
+                      )
+                    }
+                    return (
+                      <div
+                        className="preview-asset inline"
+                        key={`${part.id}-${index}`}
+                        dangerouslySetInnerHTML={{ __html: asset.html }}
+                      />
+                    )
+                  })}
                 </section>
               ))}
-              {(assets.figures.length > 0 || assets.tables.length > 0) && (
-                <section>
-                  <h2>Figures and Tables</h2>
-                  {assets.figures.map((figure) => (
-                    <figure className="preview-asset" key={figure.id}>
-                      <img src={figure.src} alt={figure.name} />
-                      <figcaption>{figure.name}</figcaption>
-                    </figure>
-                  ))}
-                  {assets.tables.map((table) => (
-                    <div className="preview-asset" key={table.id} dangerouslySetInnerHTML={{ __html: table.html }} />
-                  ))}
-                </section>
-              )}
             </article>
           </div>
           <div className="actions">
