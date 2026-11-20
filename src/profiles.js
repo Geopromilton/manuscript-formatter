@@ -131,6 +131,24 @@ export const profiles = Object.fromEntries(
         sourceUrl: source?.[1] || '',
         checkedDate: '2026-11-20',
         verified: profile.scope === 'journal',
+        layout: {
+          columns: profile.publisher === 'IEEE' ? 2 : 1,
+          pageSize: 'A4',
+          font: profile.font,
+          fontSize: profile.size,
+          lineSpacing: profile.spacing,
+          marginMm: profile.margin,
+        },
+        citation: {
+          style: profile.style,
+          csl: '',
+          engine: 'Citeproc.js planned',
+        },
+        validationRules: {
+          abstractWordLimit: profile.abstract,
+          requiredSections: ['title', 'abstract', 'introduction', 'methods', 'results', 'discussion', 'references'],
+        },
+        registryVersion: '2026-11-20.1',
       },
     ]
   }),

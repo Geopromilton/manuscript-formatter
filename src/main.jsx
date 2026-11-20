@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import { EditorContent, useEditor } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import Dexie from 'dexie'
+import JSZip from 'jszip'
 import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { profiles } from './profiles'
 import {
@@ -7,6 +11,8 @@ import {
   buildDocxConfig,
   buildLatex,
   buildPlainText,
+  buildPreflightDiagnostics,
+  buildSemanticDocument,
   countWords,
   splitSections,
   validateManuscript,
@@ -34,38 +40,53 @@ const tabs = [
   ['export', 'Export'],
 ]
 
-function openDatabase() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open('manuscript-formatter', 1)
-    request.onupgradeneeded = () =>
-      request.result.createObjectStore('projects')
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
+function SemanticEditor({ blockId, value, label, onChange }) {
+  const editor = useEditor({
+    extensions: [StarterKit],
+    content: value
+      ? `<p>${value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '</p><p>')}</p>`
+      : '<p></p>',
+    onUpdate: ({ editor: current }) => onChange(current.getText({ blockSeparator: '\n' })),
   })
+
+  useEffect(() => {
+    if (!editor) return
+    const current = editor.getText({ blockSeparator: '\n' })
+    if (value !== current) {
+      const paragraphs = value
+        ? value.split('\n').filter(Boolean).map((paragraph) =>
+          `<p>${paragraph.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`,
+        ).join('')
+        : '<p></p>'
+      editor.commands.setContent(paragraphs)
+    }
+  }, [editor, value])
+
+  return (
+    <label className="semantic-block" htmlFor={blockId}>
+      <span className="block-label">{label}</span>
+      <EditorContent
+        id={blockId}
+        className="tiptap-editor"
+        editor={editor}
+        aria-label={label}
+      />
+      <small>{countWords(value)} words</small>
+    </label>
+  )
 }
 
+const projectDatabase = new Dexie('manuscript-formatter')
+projectDatabase.version(1).stores({
+  projects: 'id',
+})
+
 async function loadProject() {
-  const database = await openDatabase()
-  return new Promise((resolve, reject) => {
-    const request = database
-      .transaction('projects', 'readonly')
-      .objectStore('projects')
-      .get('current')
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
-  })
+  return projectDatabase.projects.get('current')
 }
 
 async function saveProject(project) {
-  const database = await openDatabase()
-  return new Promise((resolve, reject) => {
-    const request = database
-      .transaction('projects', 'readwrite')
-      .objectStore('projects')
-      .put(project, 'current')
-    request.onsuccess = () => resolve()
-    request.onerror = () => reject(request.error)
-  })
+  await projectDatabase.projects.put({ id: 'current', ...project })
 }
 
 async function extractPdf(file) {
@@ -153,12 +174,14 @@ function formatImportedTable(html) {
 async function extractDocument(file) {
   if (/\.docx$/i.test(file.name)) {
     const mammoth = await import('mammoth')
+    const arrayBuffer = await file.arrayBuffer()
+    const citations = await extractCitationFields(arrayBuffer)
     const raw = await mammoth.extractRawText({
-      arrayBuffer: await file.arrayBuffer(),
+      arrayBuffer,
     })
     const html = await mammoth.convertToHtml(
       {
-        arrayBuffer: await file.arrayBuffer(),
+        arrayBuffer,
       },
       {
         convertImage: mammoth.images.imgElement((image) =>
@@ -193,10 +216,52 @@ async function extractDocument(file) {
       .replace(/[ \t]+\n/g, '\n')
       .replace(/\n{3,}/g, '\n\n')
       .trim()
-    return { text: text || raw.value, assets: { figures, tables } }
+    return { text: text || raw.value, assets: { figures, tables, citations } }
   }
-  if (/\.pdf$/i.test(file.name)) return { text: await extractPdf(file), assets: { figures: [], tables: [] } }
-  return { text: await file.text(), assets: { figures: [], tables: [] } }
+  if (/\.pdf$/i.test(file.name)) return { text: await extractPdf(file), assets: { figures: [], tables: [], citations: [] } }
+  if (/\.bib$|\.ris$/i.test(file.name)) {
+    const libraryText = await file.text()
+    return {
+      text: `References\n${libraryText}`,
+      assets: {
+        figures: [],
+        tables: [],
+        citations: [{
+          id: `library-${file.name}`,
+          manager: /\.ris$/i.test(file.name) ? 'RIS library' : 'BibTeX library',
+          detected: true,
+          note: 'Citation library detected. Automated citation formatting is ready for Citeproc.js integration.',
+        }],
+      },
+    }
+  }
+  return { text: await file.text(), assets: { figures: [], tables: [], citations: [] } }
+}
+
+async function extractCitationFields(arrayBuffer) {
+  const zip = await JSZip.loadAsync(arrayBuffer)
+  const documentXml = await zip.file('word/document.xml')?.async('string')
+  if (!documentXml) return []
+
+  const citations = []
+  if (/ADDIN ZOTERO_ITEM CSL_CITATION/.test(documentXml) ||
+      /<w:instrText[^>]*>[^<]*(CITATION|ZOTERO)/i.test(documentXml)) {
+    citations.push({
+      id: 'citation-field-zotero',
+      manager: 'Zotero',
+      detected: true,
+      note: 'Zotero field codes were detected. Live Word fields require a specialized OOXML round-trip.',
+    })
+  }
+  if (/Mendeley|MENDELEY|refWorks/i.test(documentXml)) {
+    citations.push({
+      id: 'citation-field-mendeley',
+      manager: 'Mendeley',
+      detected: true,
+      note: 'Mendeley field metadata was detected. Live Word fields require a specialized OOXML round-trip.',
+    })
+  }
+  return citations
 }
 
 function assetParts(text) {
@@ -216,7 +281,7 @@ function assetParts(text) {
 function App() {
   const [profile, setProfile] = useState('Scientific Reports')
   const [manuscript, setManuscript] = useState(blank)
-  const [assets, setAssets] = useState({ figures: [], tables: [] })
+  const [assets, setAssets] = useState({ figures: [], tables: [], citations: [] })
   const [tab, setTab] = useState('document')
   const [fileName, setFileName] = useState('')
   const [status, setStatus] = useState('')
@@ -224,13 +289,21 @@ function App() {
   const [loaded, setLoaded] = useState(false)
   const [unsaved, setUnsaved] = useState(false)
   const input = useRef()
+  const worker = useRef()
+  const [workerAnalysis, setWorkerAnalysis] = useState(null)
   const p = profiles[profile]
-  const total = fields.reduce(
-    (sum, [key]) => sum + countWords(manuscript[key]),
-    0,
-  )
   const checks = validateManuscript(manuscript, p, assets)
   const warnings = checks.filter((check) => !check.passed)
+  const semanticDocument = workerAnalysis?.semanticDocument || buildSemanticDocument(manuscript)
+  const diagnostics = workerAnalysis?.diagnostics || buildPreflightDiagnostics(manuscript, p, assets)
+  const score = Math.max(
+    0,
+    Math.round(
+      100 -
+        diagnostics.filter((diagnostic) => diagnostic.severity !== 'success').length * 12 -
+        diagnostics.filter((diagnostic) => diagnostic.severity === 'error').length * 8,
+    ),
+  )
   const assetById = Object.fromEntries(
     [...assets.figures, ...assets.tables].map((asset) => [asset.id, asset]),
   )
@@ -335,7 +408,7 @@ function App() {
       .then((project) => {
         if (project) {
           setManuscript(project.manuscript || blank)
-          setAssets(project.assets || { figures: [], tables: [] })
+          setAssets(project.assets || { figures: [], tables: [], citations: [] })
           setProfile(project.profile || 'Scientific Reports')
           setFileName(project.fileName || '')
           setStatus('Restored your previously saved work.')
@@ -344,6 +417,24 @@ function App() {
       .catch(() => setStatus('Local autosave is unavailable in this browser.'))
       .finally(() => setLoaded(true))
   }, [])
+
+  useEffect(() => {
+    if (!worker.current) {
+      worker.current = new Worker(
+        new URL('./workers/document-worker.js', import.meta.url),
+        { type: 'module' },
+      )
+      worker.current.onmessage = ({ data }) => {
+        if (data.type === 'analysis') setWorkerAnalysis(data)
+      }
+    }
+    worker.current.postMessage({
+      type: 'analyze',
+      manuscript,
+      profile: p,
+      assets,
+    })
+  }, [manuscript, p, assets])
 
   useEffect(() => {
     if (!loaded) return
@@ -368,8 +459,8 @@ function App() {
 
   async function upload(file) {
     if (!file) return
-    if (!/(\.docx|\.pdf|\.txt|\.tex)$/i.test(file.name)) {
-      setStatus('Please upload DOCX, PDF, TXT, or TEX.')
+    if (!/(\.docx|\.pdf|\.txt|\.tex|\.bib|\.ris)$/i.test(file.name)) {
+      setStatus('Please upload DOCX, PDF, TXT, TEX, BIB, or RIS.')
       return
     }
     setStatus('Reading manuscript…')
@@ -387,6 +478,15 @@ function App() {
 
   const update = (key, value) =>
     setManuscript((current) => ({ ...current, [key]: value }))
+
+  function jumpToBlock(blockId) {
+    setTab('edit')
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(`semantic-${blockId}`)
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      target?.focus()
+    })
+  }
 
   function triggerDownload(content, mime, extension) {
     const title =
@@ -636,6 +736,7 @@ function App() {
           </div>
         </div>
         <div className="top-actions">
+          <span className="local-engine"><i />Local Engine Active · Files stay on this device</span>
           <button className="icon-button" aria-label="Help">?</button>
         </div>
       </header>
@@ -716,12 +817,12 @@ function App() {
               }}
               onClick={() => input.current.click()}
             >
-              <input ref={input} type="file" accept=".docx,.pdf,.txt,.tex" onChange={(event) => upload(event.target.files[0])} />
+              <input ref={input} type="file" accept=".docx,.pdf,.txt,.tex,.bib,.ris" onChange={(event) => upload(event.target.files[0])} />
               <span className="upload-icon" aria-hidden="true">↑</span>
               <strong>{fileName || 'Drag & Drop Your Manuscript'}</strong>
               <span className="drop-subtitle">or choose a file from your device</span>
               <button type="button">▣ &nbsp; Choose Document <b>›</b></button>
-              <small>Supports: <b>DOCX</b> · <b>PDF</b> · <b>LaTeX</b></small>
+              <small>Supports: <b>DOCX</b> · <b>PDF</b> · <b>LaTeX</b> · <b>BIB</b> · <b>RIS</b></small>
               <div className="upload-note">Files are processed locally in your browser</div>
             </div>
           </div>
@@ -745,23 +846,78 @@ function App() {
       )}
 
       {tab === 'edit' && (
-        <section className="panel editor" id="panel-edit" role="tabpanel">
-          <div className="wordbar">
-            <div><strong>{total.toLocaleString()}</strong><span> manuscript words</span></div>
-            <div><strong>{countWords(manuscript.abstract)}</strong><span> / {p.abstract} abstract words</span></div>
-          </div>
-          {fields.map(([key, label]) => (
-            <label key={key}>
-              {label.toUpperCase()}
-              <textarea
-                className={['title', 'authors', 'keywords'].includes(key) ? 'short' : ''}
+        <section className="studio" id="panel-edit" role="tabpanel">
+          <aside className="studio-outline" aria-label="Manuscript outline">
+            <div className="studio-pane-heading">
+              <div><span>DOCUMENT</span><strong>Outline</strong></div>
+              <b>{score}</b>
+            </div>
+            <nav>
+              {semanticDocument.map((block) => (
+                <button key={block.id} onClick={() => jumpToBlock(block.id)}>
+                  <span>{block.label}</span>
+                  <small>{countWords(block.text)} words</small>
+                </button>
+              ))}
+            </nav>
+            <div className="preflight">
+              <strong>Submission readiness</strong>
+              <div className="score-track"><i style={{ width: `${score}%` }} /></div>
+              {diagnostics.map((diagnostic, index) => (
+                <button
+                  className={`diagnostic ${diagnostic.severity}`}
+                  key={`${diagnostic.label}-${index}`}
+                  onClick={() => jumpToBlock(diagnostic.blockId)}
+                >
+                  <span>{diagnostic.severity === 'success' ? '✓' : diagnostic.severity === 'error' ? '!' : '·'}</span>
+                  <div><strong>{diagnostic.label}</strong><small>{diagnostic.detail}</small></div>
+                </button>
+              ))}
+            </div>
+          </aside>
+
+          <div className="semantic-canvas">
+            <div className="canvas-toolbar">
+              <strong>Semantic Editor</strong>
+              <div>
+                <button aria-label="Light canvas">Aa</button>
+                <button aria-label="Focus mode">Focus</button>
+              </div>
+            </div>
+            {fields.map(([key, label]) => (
+              <SemanticEditor
+                key={key}
+                blockId={`semantic-${key}`}
+                label={label}
                 value={manuscript[key]}
-                onChange={(event) => update(key, event.target.value)}
-                placeholder={`Add ${label.toLowerCase()}...`}
+                onChange={(value) => update(key, value)}
               />
-              <small>{countWords(manuscript[key])} words</small>
-            </label>
-          ))}
+            ))}
+          </div>
+
+          <aside className="studio-preview" aria-label="Live journal preview">
+            <div className="studio-pane-heading">
+              <div><span>LIVE</span><strong>Journal Preview</strong></div>
+              <small>{p.layout?.columns || 1} col</small>
+            </div>
+            <article
+              className="mini-preview"
+              style={{
+                fontFamily: p.font,
+                fontSize: `${Math.max(7, p.size - 5)}px`,
+                lineHeight: p.spacing,
+              }}
+            >
+              <h1>{manuscript.title || 'Untitled manuscript'}</h1>
+              {manuscript.authors && <p className="preview-authors">{manuscript.authors}</p>}
+              {previewSections.map(([heading, text]) => (
+                <section key={heading}>
+                  <h2>{heading}</h2>
+                  {text.split(/\n+/).filter(Boolean).slice(0, 3).map((line, index) => <p key={index}>{line}</p>)}
+                </section>
+              ))}
+            </article>
+          </aside>
         </section>
       )}
 
@@ -789,6 +945,13 @@ function App() {
           <div className="manual-note">
             <strong>Citation formatting:</strong> {p.style} is identified for the preset, but reference text is not automatically rewritten. Review and format references manually.
           </div>
+          {(assets.citations?.length || 0) > 0 && (
+            <div className="manual-note">
+              <strong>Reference-manager fields detected:</strong>{' '}
+              {assets.citations.map((citation) => citation.manager).join(', ')}.
+              {' '}Live Word fields are preserved as detected, but reinjection into new DOCX exports requires the dedicated OOXML round-trip module.
+            </div>
+          )}
           {(assets.figures.length > 0 || assets.tables.length > 0) && (
             <div className="asset-review">
               <strong>Embedded assets</strong>

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   buildDocxConfig,
   buildLatex,
+  buildPreflightDiagnostics,
+  buildSemanticDocument,
   countWords,
   escapeLatex,
   splitSections,
@@ -35,6 +37,30 @@ describe('manuscript parsing', () => {
 })
 
 describe('exports and validation', () => {
+  it('builds a semantic block model and targeted preflight diagnostics', () => {
+    const manuscript = {
+      title: 'A study',
+      authors: 'A. Author',
+      abstract: 'word '.repeat(251),
+      keywords: 'one, two',
+      introduction: 'Background',
+      methods: '',
+      results: 'Figure 1 shows a trend.',
+      discussion: 'Discussion',
+      conclusion: '',
+      references: '',
+    }
+    const document = buildSemanticDocument(manuscript)
+    expect(document.find((block) => block.id === 'introduction').kind).toBe('section')
+    const diagnostics = buildPreflightDiagnostics(
+      manuscript,
+      { abstract: 250 },
+      { figures: [], tables: [] },
+    )
+    expect(diagnostics.some((item) => item.blockId === 'abstract')).toBe(true)
+    expect(diagnostics.some((item) => item.blockId === 'methods')).toBe(true)
+  })
+
   it('distinguishes journal profiles from publisher templates', () => {
     expect(profiles['Scientific Reports'].scope).toBe('journal')
     expect(profiles['Scientific Reports'].verified).toBe(true)

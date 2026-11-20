@@ -238,3 +238,73 @@ export function buildPlainText(manuscript) {
     .map(([label, text]) => `${label}\n${text}`)
     .join('\n\n')
 }
+
+export function buildSemanticDocument(manuscript) {
+  return [
+    ['title', 'Title', manuscript.title],
+    ['authors', 'Authors', manuscript.authors],
+    ['abstract', 'Abstract', manuscript.abstract],
+    ['keywords', 'Keywords', manuscript.keywords],
+    ['introduction', 'Introduction', manuscript.introduction],
+    ['methods', 'Methods', manuscript.methods],
+    ['results', 'Results', manuscript.results],
+    ['discussion', 'Discussion', manuscript.discussion],
+    ['conclusion', 'Conclusion', manuscript.conclusion],
+    ['references', 'References', manuscript.references],
+  ].map(([id, label, text]) => ({
+    id,
+    label,
+    kind: ['title', 'authors', 'abstract', 'keywords'].includes(id) ? id : 'section',
+    text: text || '',
+  })).filter((block) => block.text)
+}
+
+export function buildPreflightDiagnostics(manuscript, profile, assets = { figures: [], tables: [] }) {
+  const diagnostics = []
+  const add = (severity, blockId, label, detail) => {
+    diagnostics.push({ severity, blockId, label, detail })
+  }
+
+  const abstractWords = countWords(manuscript.abstract)
+  if (!manuscript.abstract.trim()) {
+    add('error', 'abstract', 'Missing abstract', 'Add an abstract before submission.')
+  } else if (abstractWords > profile.abstract) {
+    add('warning', 'abstract', 'Abstract over limit',
+      `${abstractWords} words exceeds the ${profile.abstract}-word profile limit.`)
+  }
+
+  for (const [id, label, text] of [
+    ['introduction', 'Introduction', manuscript.introduction],
+    ['methods', 'Methods', manuscript.methods],
+    ['results', 'Results', manuscript.results],
+    ['discussion', 'Discussion', manuscript.discussion],
+  ]) {
+    if (!text.trim()) add('error', id, `Missing ${label}`, `Add a ${label} section.`)
+  }
+
+  if (!manuscript.references.trim()) {
+    add('warning', 'references', 'Missing references', 'Add or verify the reference list.')
+  }
+
+  const body = [
+    manuscript.introduction,
+    manuscript.methods,
+    manuscript.results,
+    manuscript.discussion,
+  ].join('\n')
+  const figures = body.match(/\bFigure\s+\d+[a-z]?|\bFig\.?\s*\d+[a-z]?/gi)?.length || 0
+  const tables = body.match(/\bTable\s+\d+/gi)?.length || 0
+  if (figures > (assets.figures?.length || 0)) {
+    add('warning', 'results', 'Possible missing figure assets',
+      `${figures} figure references were found; ${assets.figures?.length || 0} figures are embedded.`)
+  }
+  if (tables > (assets.tables?.length || 0)) {
+    add('warning', 'results', 'Possible missing table assets',
+      `${tables} table references were found; ${assets.tables?.length || 0} tables are embedded.`)
+  }
+
+  if (!diagnostics.length) {
+    add('success', 'title', 'Preflight clear', 'No local formatting warnings were detected.')
+  }
+  return diagnostics
+}
