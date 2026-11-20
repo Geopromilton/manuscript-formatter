@@ -66,6 +66,7 @@ header p { font-size: 11px; color: #758078; margin: 4px 0; }
   border-radius: 6px;
   font-size: 15px;
 }
+.journal-card .profile-status { display: block; color: #b8d2bb; letter-spacing: 0; margin: -8px 0 16px; }
 .specs { justify-content: space-between; flex-wrap: wrap; gap: 8px; color: #b8d2bb; font-size: 11px; }
 .specs span { border-top: 1px solid #477163; padding-top: 10px; }
 

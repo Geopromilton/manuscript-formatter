@@ -575,10 +575,20 @@ function App() {
           <p className="intro">Upload your complete manuscript and prepare a journal-ready structure.</p>
         </div>
         <div className="journal-card">
-          <label htmlFor="journal-profile">PUBLISHER / JOURNAL</label>
+          <label htmlFor="journal-profile">TARGET JOURNAL / TEMPLATE</label>
           <select id="journal-profile" value={profile} onChange={(event) => setProfile(event.target.value)}>
-            {Object.keys(profiles).map((name) => <option key={name}>{name}</option>)}
+            <optgroup label="Journal-specific profiles">
+              {Object.entries(profiles)
+                .filter(([, value]) => value.scope === 'journal')
+                .map(([name]) => <option key={name}>{name}</option>)}
+            </optgroup>
+            <optgroup label="Publisher templates">
+              {Object.entries(profiles)
+                .filter(([, value]) => value.scope !== 'journal')
+                .map(([name]) => <option key={name}>{name}</option>)}
+            </optgroup>
           </select>
+          <small className="profile-status">{p.status}</small>
           <div className="specs">
             <span>{p.publisher}</span>
             <span>{p.font} {p.size} pt</span>
@@ -686,6 +696,9 @@ function App() {
             {' · checked '}{p.checkedDate}. Presets are starting defaults and must be verified against the journal’s current instructions.
           </div>
           <div className="manual-note">
+            <strong>Scope:</strong> {p.limitations}
+          </div>
+          <div className="manual-note">
             <strong>Citation formatting:</strong> {p.style} is identified for the preset, but reference text is not automatically rewritten. Review and format references manually.
           </div>
           {(assets.figures.length > 0 || assets.tables.length > 0) && (
@@ -773,7 +786,7 @@ function App() {
 
       <footer>
         <span>Built for researchers · Files stay in your browser</span>
-        <span>{Object.keys(profiles).length} publisher presets</span>
+        <span>{Object.values(profiles).filter((value) => value.scope === 'journal').length} journal profiles · {Object.values(profiles).filter((value) => value.scope !== 'journal').length} publisher templates</span>
       </footer>
     </main>
   )

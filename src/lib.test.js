@@ -7,6 +7,7 @@ import {
   splitSections,
   validateManuscript,
 } from './lib'
+import { profiles } from './profiles'
 
 describe('manuscript parsing', () => {
   it('counts words and detects common section headings', () => {
@@ -34,6 +35,13 @@ describe('manuscript parsing', () => {
 })
 
 describe('exports and validation', () => {
+  it('distinguishes journal profiles from publisher templates', () => {
+    expect(profiles['Scientific Reports'].scope).toBe('journal')
+    expect(profiles['Scientific Reports'].verified).toBe(true)
+    expect(profiles['Springer General'].scope).toBe('publisher-template')
+    expect(profiles['Springer General'].verified).toBe(false)
+  })
+
   it('escapes LaTeX special characters', () => {
     expect(escapeLatex('A&B 100% _x #1')).toContain('\\&')
     expect(escapeLatex('A&B 100% _x #1')).toContain('\\%')
