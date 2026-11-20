@@ -623,15 +623,7 @@ function App() {
           ))}
         </nav>
         <div className="sidebar-spacer" />
-        <div className="privacy-card">
-          <span className="privacy-icon">⌁</span>
-          <div><strong>Private by default</strong><span>Your files never leave this browser.</span></div>
-        </div>
-        <div className="sidebar-user">
-          <span className="avatar">GS</span>
-          <div><strong>Guest session</strong><span>Local workspace</span></div>
-          <span className="more">•••</span>
-        </div>
+        <div className="sidebar-version"><span>MF</span><div><strong>Manuscript Studio</strong><small>Workspace ready</small></div></div>
       </aside>
 
       <main className="content">
@@ -644,9 +636,7 @@ function App() {
           </div>
         </div>
         <div className="top-actions">
-          <span className="save-state"><i className={unsaved ? 'saving-dot' : ''} />{unsaved ? 'Saving changes…' : 'All changes saved'}</span>
           <button className="icon-button" aria-label="Help">?</button>
-          <button className="avatar top-avatar" aria-label="Profile">GS</button>
         </div>
       </header>
 
@@ -689,7 +679,7 @@ function App() {
 
       <div className="workspace-heading">
         <div><span className="workspace-eyebrow">CURRENT PROJECT</span><h3>{fileName || 'Untitled manuscript'}</h3></div>
-        <span className="project-status"><i /> {unsaved ? 'Saving' : 'Synced locally'}</span>
+        <span className="project-status"><i /> {unsaved ? 'Saving locally' : 'Saved locally'}</span>
       </div>
       <nav className="steps" role="tablist" aria-label="Manuscript setup steps">
         {tabs.map(([key, label]) => (
@@ -732,13 +722,7 @@ function App() {
               <span className="drop-subtitle">or choose a file from your device</span>
               <button type="button">▣ &nbsp; Choose Document <b>›</b></button>
               <small>Supports: <b>DOCX</b> · <b>PDF</b> · <b>LaTeX</b></small>
-              <div className="upload-note">⌕ Max size: 50 MB &nbsp; | &nbsp; Secure upload with end-to-end encryption</div>
-            </div>
-            <div className="dashboard-side">
-              <div className="side-card recent-projects"><div className="side-card-title"><strong>Recent Projects</strong><a href="#recent">View All →</a></div>
-                {[['▣', 'Soil Quality Study.docx', 'Ready'], ['▣', 'Urban Planning Research.pdf', 'In Review'], ['⌘', 'Geospatial Analysis.tex', 'Editing'], ['▣', 'Water Resources Study.docx', 'Ready']].map(([icon, name, state]) => <div className="recent-row" key={name}><span className="file-icon">{icon}</span><div><strong>{name}</strong><small>Apr {state === 'Ready' ? '12' : state === 'In Review' ? '10' : '08'}, 2025</small></div><b className={state.toLowerCase().replace(' ', '-')}>{state}</b></div>)}
-              </div>
-              <div className="side-card quick-tools"><strong>Quick Tools</strong><div><button onClick={() => setProfile('Custom profile')}>▣<span>Journal<br />Templates</span></button><button onClick={() => setTab('review')}>❝<span>Citation<br />Manager</span></button><button onClick={() => setTab('review')}>♢<span>Plagiarism<br />Check</span></button><button onClick={() => setTab('export')}>▤<span>Formatting<br />Guide</span></button></div></div>
+              <div className="upload-note">Files are processed locally in your browser</div>
             </div>
           </div>
         </section>
@@ -888,10 +872,6 @@ function App() {
 
       {status && <div className="toast" role="status">{status}<button aria-label="Dismiss message" onClick={() => setStatus('')}>×</button></div>}
 
-      <footer>
-        <span className="footer-quote">❯ &nbsp; From your research<br />to <em>global impact.</em></span>
-        <span>▤ &nbsp; <b>100+</b><small>Journal Templates</small></span><span>▱ &nbsp; <b>Multiple</b><small>File Formats</small></span><span>♧ &nbsp; <b>AI-Powered</b><small>Structure Check</small></span><span>♢ &nbsp; <b>Secure & Private</b><small>Your Data, Your Control</small></span>
-      </footer>
       </main>
     </div>
   )
