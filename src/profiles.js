@@ -1,6 +1,6 @@
-export const profiles = {
+const baseProfiles = {
   'Nature': {publisher:'Springer Nature',font:'Arial',size:12,spacing:1.15,margin:25,abstract:200,style:'Vancouver'},
-  'Scientific Reports': {publisher:'Springer Nature',font:'Arial',size:12,spacing:1.5,margin:25,abstract:250,style:'Vancouver'},
+  'Scientific Reports': {publisher:'Springer Nature',font:'Times New Roman',size:10,spacing:1.5,margin:25,abstract:200,style:'Vancouver'},
   'Springer General': {publisher:'Springer',font:'Times New Roman',size:12,spacing:1.5,margin:25,abstract:250,style:'APA 7'},
   'SAGE General': {publisher:'SAGE',font:'Times New Roman',size:12,spacing:1.5,margin:25,abstract:250,style:'APA 7'},
   'MDPI General': {publisher:'MDPI',font:'Times New Roman',size:12,spacing:1.5,margin:25,abstract:200,style:'Vancouver'},
@@ -30,3 +30,49 @@ export const profiles = {
   'APA Journals': {publisher:'American Psychological Association',font:'Times New Roman',size:12,spacing:2,margin:25,abstract:250,style:'APA 7'},
   'Custom profile': {publisher:'Custom',font:'Times New Roman',size:12,spacing:1.5,margin:25,abstract:250,style:'Custom'}
 }
+
+const sources = {
+  'Springer Nature': ['Springer Nature author resources', 'https://www.springernature.com/gp/authors/campaigns/manuscript-guidelines'],
+  Springer: ['Springer author instructions', 'https://www.springer.com/gp/authors-editors/journal-author/journal-author-helpdesk'],
+  SAGE: ['SAGE author guidelines', 'https://us.sagepub.com/en-us/nam/resources-for-authors'],
+  MDPI: ['MDPI instructions for authors', 'https://www.mdpi.com/authors'],
+  'American Geophysical Union': ['AGU author resources', 'https://www.agu.org/publish-with-agu'],
+  Elsevier: ['Elsevier guide for authors', 'https://www.elsevier.com/researcher/author'],
+  Wiley: ['Wiley author resources', 'https://authorservices.wiley.com/author-resources.html'],
+  'Taylor & Francis': ['Taylor & Francis author services', 'https://authorservices.taylorandfrancis.com/'],
+  Frontiers: ['Frontiers author guidelines', 'https://www.frontiersin.org/guidelines/author-guidelines'],
+  PLOS: ['PLOS submission guidelines', 'https://plos.org/resources-for-authors/'],
+  'Oxford University Press': ['OUP author resources', 'https://academic.oup.com/pages/authoring'],
+  'Cambridge University Press': ['Cambridge author guidance', 'https://www.cambridge.org/core/services/authors'],
+  IEEE: ['IEEE author resources', 'https://authors.ieeeauthorcenter.ieee.org/'],
+  'National Academy of Sciences': ['PNAS author center', 'https://www.pnas.org/authors'],
+  'American Chemical Society': ['ACS author guidelines', 'https://publish.acs.org/publish/'],
+  'Royal Society': ['Royal Society author instructions', 'https://royalsociety.org/journals/authors/'],
+  'Royal Society of Chemistry': ['RSC publishing guide', 'https://www.rsc.org/journals-books-databases/journal-authors-reviewers/'],
+  'American Association for the Advancement of Science': ['Science author resources', 'https://www.science.org/content/page/instructions-authors'],
+  'IOP Publishing': ['IOP author resources', 'https://publishingsupport.iopscience.iop.org/'],
+  'American Physical Society': ['APS author center', 'https://journals.aps.org/authors'],
+  'AIP Publishing': ['AIP author resources', 'https://publishing.aip.org/resources/'],
+  Emerald: ['Emerald author guidelines', 'https://www.emeraldgrouppublishing.com/how-to/author-guidelines'],
+  'De Gruyter': ['De Gruyter author guidelines', 'https://www.degruyter.com/publishing/about-us/services-for-authors'],
+  Karger: ['Karger author guidelines', 'https://karger.com/pages/authors'],
+  'Hindawi / Wiley': ['Wiley Hindawi author resources', 'https://www.hindawi.com/publish-research/'],
+  Lippincott: ['Wolters Kluwer author resources', 'https://journals.lww.com/pages/authorinstructions.aspx'],
+  'American Psychological Association': ['APA style and publishing resources', 'https://apastyle.apa.org/'],
+}
+
+export const profiles = Object.fromEntries(
+  Object.entries(baseProfiles).map(([name, profile]) => {
+    const source = sources[profile.publisher]
+    return [
+      name,
+      {
+        ...profile,
+        sourceName: source?.[0] || 'Publisher verification needed',
+        sourceUrl: source?.[1] || '',
+        checkedDate: '2026-11-20',
+        verified: Boolean(source),
+      },
+    ]
+  }),
+)

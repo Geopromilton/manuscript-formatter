@@ -12,18 +12,23 @@ https://geopromilton.github.io/manuscript-formatter/
 - Automatic title, author, abstract, keyword, section, and reference detection
 - Total and per-section word counts
 - Presets for 29 journal/publisher families, including Nature, PNAS, IEEE, SAGE, MDPI, AGU, Elsevier, Wiley, Springer, Taylor & Francis, Frontiers, PLOS, BMC, OUP, Cambridge, ACS, and others
-- DOCX, PDF, TXT, and LaTeX export
+- DOCX, PDF, TXT, and LaTeX export with preset font, size, spacing, and margin settings
+- Live formatted preview and explicit submission-readiness checks
+- IndexedDB autosave with unsaved-change warnings
+- Keyboard-operable upload step and ARIA tab navigation
 - Browser-only file processing
 
 ## Development
 
 ```bash
-npm install
+npm ci
 npm run dev
 npm run build
+npm test
+npm run lint
 ```
 
-Publisher presets are starting defaults, not substitutes for a journal's current official instructions. Add journal-specific overrides in the custom profile workflow as it is expanded.
+Publisher presets include a source link and a checked date where a reliable publisher guideline page could be mapped. They remain starting defaults, not substitutes for a journal's current official instructions. Citation styles are identified but references are not automatically rewritten.
 
 ## License
 

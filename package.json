@@ -6,17 +6,23 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "lint": "eslint src"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "latest",
-    "vite": "latest",
-    "typescript": "latest",
-    "react": "latest",
-    "react-dom": "latest",
-    "mammoth": "latest",
-    "pdfjs-dist": "latest",
-    "docx": "latest",
-    "jspdf": "latest"
+    "docx": "9.16.0",
+    "jspdf": "4.2.1",
+    "mammoth": "1.13.0",
+    "pdfjs-dist": "6.5.438",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "6.3.0",
+    "eslint": "10.15.0",
+    "globals": "17.14.0",
+    "vite": "8.3.8",
+    "vitest": "5.1.1"
   }
 }
