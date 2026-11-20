@@ -130,6 +130,26 @@ function documentHtmlToText(node) {
   return blockElements.has(node.tagName) ? `\n${content}\n` : content
 }
 
+function formatImportedTable(html) {
+  const document = new DOMParser().parseFromString(html, 'text/html')
+  document.querySelectorAll('table').forEach((table) => {
+    table.classList.add('manuscript-table')
+    table.setAttribute('data-reference-style', 'grid-gray-header')
+    const firstRow = table.querySelector('tr')
+    if (!firstRow) return
+    firstRow.classList.add('table-header-row')
+    firstRow.querySelectorAll('td').forEach((cell) => {
+      const header = document.createElement('th')
+      header.innerHTML = cell.innerHTML
+      for (const attribute of cell.attributes) {
+        header.setAttribute(attribute.name, attribute.value)
+      }
+      cell.replaceWith(header)
+    })
+  })
+  return document.body.innerHTML
+}
+
 async function extractDocument(file) {
   if (/\.docx$/i.test(file.name)) {
     const mammoth = await import('mammoth')
@@ -148,7 +168,8 @@ async function extractDocument(file) {
         ),
       },
     )
-    const documentHtml = new DOMParser().parseFromString(html.value, 'text/html')
+    const formattedHtml = formatImportedTable(html.value)
+    const documentHtml = new DOMParser().parseFromString(formattedHtml, 'text/html')
     const figures = [...documentHtml.querySelectorAll('img')].map((image, index) => ({
       id: `figure-${index + 1}`,
       name: image.getAttribute('alt') || `Embedded Figure ${index + 1}`,
@@ -247,14 +268,22 @@ function App() {
         children: [...sourceRow.querySelectorAll('th, td')].map((cell) =>
           new docx.TableCell({
             width: { size: 25, type: docx.WidthType.PERCENTAGE },
+            shading: cell.tagName === 'TH' ? { fill: 'F2F2F2' } : undefined,
+            borders: {
+              top: { style: docx.BorderStyle.SINGLE, size: 4, color: '666666' },
+              bottom: { style: docx.BorderStyle.SINGLE, size: 4, color: '666666' },
+              left: { style: docx.BorderStyle.SINGLE, size: 4, color: '666666' },
+              right: { style: docx.BorderStyle.SINGLE, size: 4, color: '666666' },
+            },
             children: [
               new docx.Paragraph({
+                alignment: cell.tagName === 'TH' ? 'center' : 'left',
                 spacing: { line: config.line, lineRule: 'auto' },
                 children: [
                   new docx.TextRun({
                     text: cell.textContent.trim(),
                     font: config.font,
-                    size: config.fontSize,
+                    size: Math.min(config.fontSize, 20),
                     bold: cell.tagName === 'TH',
                   }),
                 ],
@@ -265,22 +294,21 @@ function App() {
       }),
     )
     children.push(
-      new docx.Paragraph({
-        alignment: 'center',
-        spacing: { before: 120, after: 80, line: config.line, lineRule: 'auto' },
-        children: [new docx.TextRun({ text: asset.name, bold: true, font: config.font, size: config.fontSize })],
-      }),
       new docx.Table({
         rows,
         borders: {
-          top: { style: 'single', size: 6, color: '173D35' },
-          bottom: { style: 'single', size: 6, color: '173D35' },
-          left: { style: 'nil' },
-          right: { style: 'nil' },
-          insideHorizontal: { style: 'single', size: 4, color: 'A7B1A9' },
-          insideVertical: { style: 'nil' },
+          top: { style: docx.BorderStyle.SINGLE, size: 4, color: '666666' },
+          bottom: { style: docx.BorderStyle.SINGLE, size: 4, color: '666666' },
+          left: { style: docx.BorderStyle.SINGLE, size: 4, color: '666666' },
+          right: { style: docx.BorderStyle.SINGLE, size: 4, color: '666666' },
+          insideHorizontal: { style: docx.BorderStyle.SINGLE, size: 4, color: '666666' },
+          insideVertical: { style: docx.BorderStyle.SINGLE, size: 4, color: '666666' },
         },
-        width: { size: 100, type: docx.WidthType.PERCENTAGE },
+      }),
+      new docx.Paragraph({
+        alignment: 'center',
+        spacing: { before: 80, after: 160, line: config.line, lineRule: 'auto' },
+        children: [new docx.TextRun({ text: asset.name, font: config.font, size: 18, italic: true })],
       }),
     )
   }
@@ -401,6 +429,7 @@ function App() {
       TableRow,
       TableCell,
       WidthType,
+      BorderStyle,
     } = await import('docx')
     const docx = {
       Paragraph,
@@ -410,6 +439,7 @@ function App() {
       TableRow,
       TableCell,
       WidthType,
+      BorderStyle,
     }
     const config = buildDocxConfig(p)
     const children = []
@@ -530,47 +560,11 @@ function App() {
         y += 5
         return
       }
-      const parsed = new DOMParser().parseFromString(asset.html, 'text/html')
-      const sourceRows = [...parsed.querySelectorAll('tr')]
-      if (sourceRows.length === 0) return
-
       if (y > 270) { pdf.addPage(); y = margin }
       write(asset.name, true)
-      y += 4
-
-      const tableRows = sourceRows.map((row) =>
-        [...row.querySelectorAll('th, td')].map((cell) => cell.textContent.trim()),
-      )
-      const columnCount = Math.max(...tableRows.map((row) => row.length))
-      const tableWidth = 210 - margin * 2
-      const columnWidth = tableWidth / columnCount
-
-      tableRows.forEach((row, rowIndex) => {
-        const cells = row.map((cell) => pdf.splitTextToSize(cell, columnWidth - 3))
-        const rowHeight = Math.max(...cells.map((cell) => cell.length), 1) * p.spacing * 4 + 3
-        if (y + rowHeight > 297 - margin) { pdf.addPage(); y = margin }
-
-        if (rowIndex === 0) {
-          pdf.setDrawColor(23, 61, 53)
-          pdf.setLineWidth(0.5)
-          pdf.line(margin, y - 2, margin + tableWidth, y - 2)
-          pdf.setFont(undefined, 'bold')
-        } else {
-          pdf.setDrawColor(167, 177, 169)
-          pdf.setLineWidth(0.12)
-          pdf.line(margin, y - 1, margin + tableWidth, y - 1)
-          pdf.setFont(undefined, 'normal')
-        }
-
-        cells.forEach((lines, columnIndex) => {
-          pdf.text(lines, margin + columnIndex * columnWidth + 1.5, y + 3)
-        })
-        y += rowHeight
-      })
-      pdf.setDrawColor(23, 61, 53)
-      pdf.setLineWidth(0.5)
-      pdf.line(margin, y - 1, margin + tableWidth, y - 1)
-      y += 6
+      y += 2
+      write(asset.text)
+      y += 5
     }
 
     write(manuscript.title || 'Untitled Manuscript', true)
@@ -609,46 +603,69 @@ function App() {
   ].filter(([, text]) => text)
 
   return (
-    <main>
-      <aside className="sidebar" aria-label="Primary navigation">
+    <div className="app-shell">
+      <aside className="sidebar">
         <div className="sidebar-brand">
-          <span className="sidebar-mark">M</span>
-          <div><strong>Manuscript</strong><strong>Formatter</strong></div>
+          <span className="mark">M</span>
+          <div>
+            <strong>Manuscript</strong>
+            <span>Formatter AI</span>
+          </div>
         </div>
-        <nav className="sidebar-nav">
-          <button className="active"><span aria-hidden="true">⌂</span>Home</button>
-          <button><span aria-hidden="true">▱</span>My Projects</button>
-          <button><span aria-hidden="true">▤</span>Templates</button>
-          <button><span aria-hidden="true">⚙</span>Settings</button>
+        <div className="sidebar-label">WORKSPACE</div>
+        <nav className="side-nav" aria-label="Workspace navigation">
+          {tabs.map(([key, label], index) => (
+            <button key={key} className={tab === key ? 'selected' : ''} onClick={() => setTab(key)}>
+              <span className="nav-icon">{['⌂', '◈', '✎', '✓', '↗'][index]}</span>
+              <span>{label}</span>
+              {key === 'review' && warnings.length > 0 && <b>{warnings.length}</b>}
+            </button>
+          ))}
         </nav>
-        <div className="sidebar-message">
-          <span>Better</span>
-          <em>Formatting for Greater Impact</em>
+        <div className="sidebar-spacer" />
+        <div className="privacy-card">
+          <span className="privacy-icon">⌁</span>
+          <div><strong>Private by default</strong><span>Your files never leave this browser.</span></div>
+        </div>
+        <div className="sidebar-user">
+          <span className="avatar">GS</span>
+          <div><strong>Guest session</strong><span>Local workspace</span></div>
+          <span className="more">•••</span>
         </div>
       </aside>
 
-      <div className="workspace">
-        <header>
+      <main className="content">
+      <header>
         <div className="brand">
           <span className="mark">M</span>
           <div>
-            <h1>Manuscript Formatter</h1>
+            <h1>Manuscript Formatter <span className="ai-pill">AI</span></h1>
             <p>Journal-ready formatting, without the busywork.</p>
           </div>
         </div>
-        <span className="save-state">{unsaved ? 'Saving…' : 'Saved locally'}</span>
-        <span className="badge">OPEN SOURCE · PRIVATE BY DEFAULT</span>
+        <div className="top-actions">
+          <span className="save-state"><i className={unsaved ? 'saving-dot' : ''} />{unsaved ? 'Saving changes…' : 'All changes saved'}</span>
+          <button className="icon-button" aria-label="Help">?</button>
+          <button className="avatar top-avatar" aria-label="Profile">GS</button>
+        </div>
       </header>
 
       <section className="hero">
         <div>
-          <p className="eyebrow">RESEARCH AUTHOR WORKSPACE</p>
-          <h2>Format once.<br /><em>Submit with confidence.</em></h2>
-          <p className="intro">Upload your complete manuscript and prepare a journal-ready structure.</p>
+          <p className="eyebrow">GOOD MORNING, RESEARCHER <span>✦</span></p>
+          <h2>Bring your research<br /><em>to its final form.</em></h2>
+          <p className="intro">A calm, intelligent workspace for transforming your manuscript into a publication-ready document.</p>
         </div>
-        <div className="journal-card">
-          <label htmlFor="journal-profile">TARGET JOURNAL / TEMPLATE</label>
-          <select id="journal-profile" value={profile} onChange={(event) => setProfile(event.target.value)}>
+        <div className="hero-side">
+          <div className="journey-card">
+            <div><h3>Your Manuscript<br />Journey</h3><span className="journey-icon">✦</span></div>
+            <ul><li>Structured Format</li><li>Citation Ready</li><li>Journal Guidelines</li><li>Plagiarism Check</li></ul>
+            <button onClick={() => setTab('review')}>➤ Ready for Submission</button>
+          </div>
+          <div className="journal-card">
+            <div className="card-kicker"><span className="sparkle">✦</span> FORMATTING PROFILE</div>
+            <label htmlFor="journal-profile">TARGET JOURNAL / TEMPLATE</label>
+            <select id="journal-profile" value={profile} onChange={(event) => setProfile(event.target.value)}>
             <optgroup label="Journal-specific profiles">
               {Object.entries(profiles)
                 .filter(([, value]) => value.scope === 'journal')
@@ -659,16 +676,21 @@ function App() {
                 .filter(([, value]) => value.scope !== 'journal')
                 .map(([name]) => <option key={name}>{name}</option>)}
             </optgroup>
-          </select>
-          <small className="profile-status">{p.status}</small>
-          <div className="specs">
-            <span>{p.publisher}</span>
-            <span>{p.font} {p.size} pt</span>
-            <span>{p.style}</span>
+            </select>
+            <small className="profile-status"><span className="status-dot" />{p.status}</small>
+            <div className="specs">
+              <span>{p.publisher}</span>
+              <span>{p.font} {p.size} pt</span>
+              <span>{p.style}</span>
+            </div>
           </div>
         </div>
       </section>
 
+      <div className="workspace-heading">
+        <div><span className="workspace-eyebrow">CURRENT PROJECT</span><h3>{fileName || 'Untitled manuscript'}</h3></div>
+        <span className="project-status"><i /> {unsaved ? 'Saving' : 'Synced locally'}</span>
+      </div>
       <nav className="steps" role="tablist" aria-label="Manuscript setup steps">
         {tabs.map(([key, label]) => (
           <button
@@ -686,28 +708,38 @@ function App() {
 
       {tab === 'document' && (
         <section className="panel" id="panel-document" role="tabpanel">
-          <div
-            className={`dropzone ${drag ? 'drag' : ''}`}
-            role="button"
-            tabIndex="0"
-            aria-label="Choose or drop a manuscript"
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') input.current.click()
-            }}
-            onDragOver={(event) => { event.preventDefault(); setDrag(true) }}
-            onDragLeave={() => setDrag(false)}
-            onDrop={(event) => {
-              event.preventDefault()
-              setDrag(false)
-              upload(event.dataTransfer.files[0])
-            }}
-            onClick={() => input.current.click()}
-          >
-            <input ref={input} type="file" accept=".docx,.pdf,.txt,.tex" onChange={(event) => upload(event.target.files[0])} />
-            <span className="upload-icon" aria-hidden="true">↑</span>
-            <strong>{fileName || 'Drop your manuscript here'}</strong>
-            <small>DOCX, PDF, TXT or LaTeX</small>
-            <button type="button">Choose document</button>
+          <div className="dashboard-columns">
+            <div
+              className={`dropzone ${drag ? 'drag' : ''}`}
+              role="button"
+              tabIndex="0"
+              aria-label="Choose or drop a manuscript"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') input.current.click()
+              }}
+              onDragOver={(event) => { event.preventDefault(); setDrag(true) }}
+              onDragLeave={() => setDrag(false)}
+              onDrop={(event) => {
+                event.preventDefault()
+                setDrag(false)
+                upload(event.dataTransfer.files[0])
+              }}
+              onClick={() => input.current.click()}
+            >
+              <input ref={input} type="file" accept=".docx,.pdf,.txt,.tex" onChange={(event) => upload(event.target.files[0])} />
+              <span className="upload-icon" aria-hidden="true">↑</span>
+              <strong>{fileName || 'Drag & Drop Your Manuscript'}</strong>
+              <span className="drop-subtitle">or choose a file from your device</span>
+              <button type="button">▣ &nbsp; Choose Document <b>›</b></button>
+              <small>Supports: <b>DOCX</b> · <b>PDF</b> · <b>LaTeX</b></small>
+              <div className="upload-note">⌕ Max size: 50 MB &nbsp; | &nbsp; Secure upload with end-to-end encryption</div>
+            </div>
+            <div className="dashboard-side">
+              <div className="side-card recent-projects"><div className="side-card-title"><strong>Recent Projects</strong><a href="#recent">View All →</a></div>
+                {[['▣', 'Soil Quality Study.docx', 'Ready'], ['▣', 'Urban Planning Research.pdf', 'In Review'], ['⌘', 'Geospatial Analysis.tex', 'Editing'], ['▣', 'Water Resources Study.docx', 'Ready']].map(([icon, name, state]) => <div className="recent-row" key={name}><span className="file-icon">{icon}</span><div><strong>{name}</strong><small>Apr {state === 'Ready' ? '12' : state === 'In Review' ? '10' : '08'}, 2025</small></div><b className={state.toLowerCase().replace(' ', '-')}>{state}</b></div>)}
+              </div>
+              <div className="side-card quick-tools"><strong>Quick Tools</strong><div><button onClick={() => setProfile('Custom profile')}>▣<span>Journal<br />Templates</span></button><button onClick={() => setTab('review')}>❝<span>Citation<br />Manager</span></button><button onClick={() => setTab('review')}>♢<span>Plagiarism<br />Check</span></button><button onClick={() => setTab('export')}>▤<span>Formatting<br />Guide</span></button></div></div>
+            </div>
           </div>
         </section>
       )}
@@ -834,10 +866,11 @@ function App() {
                       )
                     }
                     return (
-                      <div className="preview-asset inline" key={`${part.id}-${index}`}>
-                        <h3 className="preview-table-title">{asset.name}</h3>
-                        <div dangerouslySetInnerHTML={{ __html: asset.html }} />
-                      </div>
+                      <div
+                        className="preview-asset inline"
+                        key={`${part.id}-${index}`}
+                        dangerouslySetInnerHTML={{ __html: asset.html }}
+                      />
                     )
                   })}
                 </section>
@@ -856,11 +889,11 @@ function App() {
       {status && <div className="toast" role="status">{status}<button aria-label="Dismiss message" onClick={() => setStatus('')}>×</button></div>}
 
       <footer>
-        <span>Built for researchers · Files stay in your browser</span>
-        <span>{Object.values(profiles).filter((value) => value.scope === 'journal').length} journal profiles · {Object.values(profiles).filter((value) => value.scope !== 'journal').length} publisher templates</span>
+        <span className="footer-quote">❯ &nbsp; From your research<br />to <em>global impact.</em></span>
+        <span>▤ &nbsp; <b>100+</b><small>Journal Templates</small></span><span>▱ &nbsp; <b>Multiple</b><small>File Formats</small></span><span>♧ &nbsp; <b>AI-Powered</b><small>Structure Check</small></span><span>♢ &nbsp; <b>Secure & Private</b><small>Your Data, Your Control</small></span>
       </footer>
-      </div>
-    </main>
+      </main>
+    </div>
   )
 }
 
