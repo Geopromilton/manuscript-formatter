@@ -264,7 +264,25 @@ function App() {
         ),
       }),
     )
-    children.push(new docx.Table({ rows }), new docx.Paragraph({ text: asset.name }))
+    children.push(
+      new docx.Paragraph({
+        alignment: 'center',
+        spacing: { before: 120, after: 80, line: config.line, lineRule: 'auto' },
+        children: [new docx.TextRun({ text: asset.name, bold: true, font: config.font, size: config.fontSize })],
+      }),
+      new docx.Table({
+        rows,
+        borders: {
+          top: { style: 'single', size: 6, color: '173D35' },
+          bottom: { style: 'single', size: 6, color: '173D35' },
+          left: { style: 'nil' },
+          right: { style: 'nil' },
+          insideHorizontal: { style: 'single', size: 4, color: 'A7B1A9' },
+          insideVertical: { style: 'nil' },
+        },
+        width: { size: 100, type: docx.WidthType.PERCENTAGE },
+      }),
+    )
   }
 
   function appendDocxText(text, children, config, docx) {
@@ -512,11 +530,47 @@ function App() {
         y += 5
         return
       }
+      const parsed = new DOMParser().parseFromString(asset.html, 'text/html')
+      const sourceRows = [...parsed.querySelectorAll('tr')]
+      if (sourceRows.length === 0) return
+
       if (y > 270) { pdf.addPage(); y = margin }
       write(asset.name, true)
-      y += 2
-      write(asset.text)
-      y += 5
+      y += 4
+
+      const tableRows = sourceRows.map((row) =>
+        [...row.querySelectorAll('th, td')].map((cell) => cell.textContent.trim()),
+      )
+      const columnCount = Math.max(...tableRows.map((row) => row.length))
+      const tableWidth = 210 - margin * 2
+      const columnWidth = tableWidth / columnCount
+
+      tableRows.forEach((row, rowIndex) => {
+        const cells = row.map((cell) => pdf.splitTextToSize(cell, columnWidth - 3))
+        const rowHeight = Math.max(...cells.map((cell) => cell.length), 1) * p.spacing * 4 + 3
+        if (y + rowHeight > 297 - margin) { pdf.addPage(); y = margin }
+
+        if (rowIndex === 0) {
+          pdf.setDrawColor(23, 61, 53)
+          pdf.setLineWidth(0.5)
+          pdf.line(margin, y - 2, margin + tableWidth, y - 2)
+          pdf.setFont(undefined, 'bold')
+        } else {
+          pdf.setDrawColor(167, 177, 169)
+          pdf.setLineWidth(0.12)
+          pdf.line(margin, y - 1, margin + tableWidth, y - 1)
+          pdf.setFont(undefined, 'normal')
+        }
+
+        cells.forEach((lines, columnIndex) => {
+          pdf.text(lines, margin + columnIndex * columnWidth + 1.5, y + 3)
+        })
+        y += rowHeight
+      })
+      pdf.setDrawColor(23, 61, 53)
+      pdf.setLineWidth(0.5)
+      pdf.line(margin, y - 1, margin + tableWidth, y - 1)
+      y += 6
     }
 
     write(manuscript.title || 'Untitled Manuscript', true)
@@ -556,7 +610,25 @@ function App() {
 
   return (
     <main>
-      <header>
+      <aside className="sidebar" aria-label="Primary navigation">
+        <div className="sidebar-brand">
+          <span className="sidebar-mark">M</span>
+          <div><strong>Manuscript</strong><strong>Formatter</strong></div>
+        </div>
+        <nav className="sidebar-nav">
+          <button className="active"><span aria-hidden="true">⌂</span>Home</button>
+          <button><span aria-hidden="true">▱</span>My Projects</button>
+          <button><span aria-hidden="true">▤</span>Templates</button>
+          <button><span aria-hidden="true">⚙</span>Settings</button>
+        </nav>
+        <div className="sidebar-message">
+          <span>Better</span>
+          <em>Formatting for Greater Impact</em>
+        </div>
+      </aside>
+
+      <div className="workspace">
+        <header>
         <div className="brand">
           <span className="mark">M</span>
           <div>
@@ -762,11 +834,10 @@ function App() {
                       )
                     }
                     return (
-                      <div
-                        className="preview-asset inline"
-                        key={`${part.id}-${index}`}
-                        dangerouslySetInnerHTML={{ __html: asset.html }}
-                      />
+                      <div className="preview-asset inline" key={`${part.id}-${index}`}>
+                        <h3 className="preview-table-title">{asset.name}</h3>
+                        <div dangerouslySetInnerHTML={{ __html: asset.html }} />
+                      </div>
                     )
                   })}
                 </section>
@@ -788,6 +859,7 @@ function App() {
         <span>Built for researchers · Files stay in your browser</span>
         <span>{Object.values(profiles).filter((value) => value.scope === 'journal').length} journal profiles · {Object.values(profiles).filter((value) => value.scope !== 'journal').length} publisher templates</span>
       </footer>
+      </div>
     </main>
   )
 }
